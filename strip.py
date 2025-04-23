@@ -8,7 +8,6 @@ def snake_to_camel(name):
     return ''.join(word.capitalize() for word in name.split('_'))
 
 def is_program_block_active(content: str) -> bool:
-    # Finds all #[program] lines NOT in comments
     for line in content.splitlines():
         if "#[program]" in line:
             stripped = line.strip()
@@ -16,7 +15,23 @@ def is_program_block_active(content: str) -> bool:
                 return True
     return False
 
-# 🔍 Step 1: Find all #[program] blocks (non-commented), extract instruction names
+def build_obfuscated(name: str) -> bytes:
+    wizard = "🧙"        # 4 bytes in UTF-8
+    pad_byte = b"\x7F"   # 1-byte invisible (DEL)
+
+    target_len = len(name.encode("utf-8"))
+
+    obf = ""
+    while len(obf.encode("utf-8")) + len(wizard.encode("utf-8")) <= target_len:
+        obf += wizard
+
+    obf_bytes = obf.encode("utf-8")
+    remaining = target_len - len(obf_bytes)
+    obf_bytes += pad_byte * remaining
+
+    return b"Instruction: " + obf_bytes
+
+# Step 1: Extract instructions
 ix_names = []
 
 for root, _, files in os.walk(SRC_ROOT):
@@ -36,7 +51,7 @@ if not ix_names:
     print("❌ No active #[program] blocks or instruction functions found.")
     exit(1)
 
-# 🔍 Step 2: Patch all .so files in target/deploy/
+# Step 2: Patch .so files
 so_files = [f for f in os.listdir(DEPLOY_DIR) if f.endswith(".so")]
 
 if not so_files:
@@ -55,10 +70,11 @@ for so_name in so_files:
 
     for name in ix_names:
         full = f"Instruction: {name}"
-        if full.encode() in patched:
-            obfuscated = f"Instruction: {'_' * len(name)}".encode()
-            patched = patched.replace(full.encode(), obfuscated)
-            print(f"  🔹 Stripped: {full}")
+        full_bytes = full.encode("utf-8")
+        if full_bytes in patched:
+            obfuscated = build_obfuscated(name)
+            patched = patched.replace(full_bytes, obfuscated)
+            print(f"  🧙 Obfuscated: {full}")
             patched_any = True
         else:
             print(f"  ⚠️  Not found: {full}")
